@@ -1,141 +1,63 @@
 <!DOCTYPE html>
-<html lang="it">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>MASTER ROOT - Live Oracle</title>
+    <title>MASTER ROOT - ULTRA TERMINAL</title>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background: #020617; color: #f8fafc; font-family: 'JetBrains Mono', monospace; margin: 0; }
-        #chart { width: 100%; height: 75vh; }
-        .panel { background: #0f172a; border-top: 2px solid #22d3ee; }
-        .blink { animation: blinker 1.5s linear infinite; }
-        @keyframes blinker { 50% { opacity: 0; } }
+        body { margin: 0; background: #000; color: #0f0; font-family: 'Courier New', monospace; }
+        #controls { padding: 10px; border-bottom: 1px solid #333; display: flex; gap: 20px; }
+        #chart { width: 100vw; height: 85vh; }
+        .stat { color: #00ffcc; font-weight: bold; }
     </style>
 </head>
 <body>
-
-    <header class="p-4 flex justify-between items-center border-b border-slate-800">
-        <div>
-            <h1 class="text-xl font-bold text-white uppercase italic">The Master Root <span class="text-cyan-400 not-italic">Live</span></h1>
-            <p id="pairDisplay" class="text-[10px] text-slate-500 tracking-[0.2em]">ETHUSDT | REAL-TIME BLOCKCHAIN DATA</p>
-        </div>
-        <div class="flex gap-2">
-            <button onclick="changeSymbol('ETHUSDT')" class="bg-slate-800 px-4 py-2 rounded text-xs hover:bg-cyan-600 transition">ETH</button>
-            <button onclick="changeSymbol('BTCUSDT')" class="bg-slate-800 px-4 py-2 rounded text-xs hover:bg-cyan-600 transition">BTC</button>
-        </div>
-    </header>
-
+    <div id="controls">
+        <span>ASSET: <b class="stat">ETH/USDT</b></span>
+        <span>STATUS: <b id="status" class="stat">CONNECTING...</b></span>
+        <span>RADICE: <b id="rootVal" class="stat">--</b></span>
+    </div>
     <div id="chart"></div>
 
-    <div class="panel fixed bottom-0 w-full p-4 grid grid-cols-3 gap-4 shadow-2xl">
-        <div class="text-center border-r border-slate-700">
-            <p class="text-[9px] text-slate-400 uppercase">Distanza Radice</p>
-            <p id="distVal" class="text-lg font-bold">--%</p>
-        </div>
-        <div class="text-center border-r border-slate-700">
-            <p class="text-[9px] text-slate-400 uppercase">Prezzo Attuale</p>
-            <p id="priceVal" class="text-lg font-bold text-cyan-400">--</p>
-        </div>
-        <div class="text-center">
-            <p class="text-[9px] text-slate-400 uppercase">Stato Teoria</p>
-            <p id="stateVal" class="text-xs font-bold text-yellow-500 blink uppercase">In ascolto...</p>
-        </div>
-    </div>
-
     <script>
-        let currentSymbol = 'ETHUSDT';
-        let chart, candleSeries, rootLine, liqLine, ws;
-        let dataBuffer = [];
+        const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+            layout: { background: { color: '#000' }, textColor: '#0f0' },
+            grid: { vertLines: { color: '#111' }, horzLines: { color: '#111' } },
+            timeScale: { timeVisible: true, secondsVisible: true }
+        });
 
-        function init() {
-            const chartElement = document.getElementById('chart');
-            chart = LightweightCharts.createChart(chartElement, {
-                layout: { background: { color: '#020617' }, textColor: '#94a3b8' },
-                grid: { vertLines: { color: '#0f172a' }, horzLines: { color: '#0f172a' } },
-                timeScale: { timeVisible: true, secondsVisible: true },
-                rightPriceScale: { borderColor: '#1e293b' }
-            });
+        const candleSeries = chart.addCandlestickSeries({ upColor: '#0f0', downColor: '#f00' });
+        const rootLine = chart.addLineSeries({ color: '#00ccff', lineWidth: 2 });
+        
+        // DATI REAL TIME VIA WEBSOCKET DIRETTO
+        const socket = new WebSocket('wss://stream.binance.com:443/ws/ethusdt@kline_1s');
 
-            candleSeries = chart.addCandlestickSeries({ upColor: '#22d3ee', downColor: '#f43f5e', borderVisible: false });
-            rootLine = chart.addLineSeries({ color: '#22d3ee', lineWidth: 3, title: 'Radice Attuale' });
-            liqLine = chart.addLineSeries({ color: '#f97316', lineWidth: 2, lineStyle: 2, title: 'Radice Passata' });
+        let prices = [];
+        let volumes = [];
 
-            loadHistory(currentSymbol);
-        }
-
-        async function loadHistory(symbol) {
-            if (ws) ws.close();
-            const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=1000`);
-            const raw = await res.json();
-            
-            dataBuffer = raw.map(d => ({
-                time: d[0] / 1000,
-                open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4]), vol: parseFloat(d[5])
-            }));
-
-            candleSeries.setData(dataBuffer);
-            updateLogic();
-            startLive(symbol);
-        }
-
-        function updateLogic() {
-            let sumPV = 0, sumV = 0, currentRoot = 0;
-            const rootPoints = [];
-            const liqPoints = [];
-            const markers = [];
-
-            dataBuffer.forEach((d, i) => {
-                const usdVol = d.close * d.vol;
-                if (usdVol >= 10000) {
-                    sumPV += d.close * usdVol;
-                    sumV += usdVol;
-                    currentRoot = sumPV / sumV;
-                }
-                
-                if (currentRoot > 0) {
-                    rootPoints.push({ time: d.time, value: currentRoot });
-                    const lVal = currentRoot * 0.97; // Logica radice passata
-                    liqPoints.push({ time: d.time, value: lVal });
-                }
-            });
-
-            rootLine.setData(rootPoints);
-            liqLine.setData(liqPoints);
-
-            const lastPrice = dataBuffer[dataBuffer.length-1].close;
-            const lastRoot = rootPoints[rootPoints.length-1].value;
-            const dist = ((lastPrice - lastRoot) / lastRoot * 100).toFixed(2);
-
-            document.getElementById('priceVal').innerText = "$" + lastPrice.toFixed(2);
-            document.getElementById('distVal').innerText = dist + "%";
-            document.getElementById('stateVal').innerText = Math.abs(dist) < 1.5 ? "SWAP IMMINENTE" : "TREND ATTIVO";
-        }
-
-        function startLive(symbol) {
-            ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_1m`);
-            ws.onmessage = (e) => {
-                const k = JSON.parse(e.data).k;
-                const candle = { time: k.t / 1000, open: +k.o, high: +k.h, low: +k.l, close: +k.c, vol: +k.v };
-                
-                if (dataBuffer[dataBuffer.length-1].time === candle.time) {
-                    dataBuffer[dataBuffer.length-1] = candle;
-                } else {
-                    dataBuffer.push(candle);
-                }
-                
-                candleSeries.update(candle);
-                updateLogic();
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            const k = data.k;
+            const candle = {
+                time: k.t / 1000,
+                open: parseFloat(k.o),
+                high: parseFloat(k.h),
+                low: parseFloat(k.l),
+                close: parseFloat(k.c)
             };
-        }
 
-        function changeSymbol(s) {
-            currentSymbol = s;
-            document.getElementById('pairDisplay').innerText = `${s} | REAL-TIME BLOCKCHAIN DATA`;
-            loadHistory(s);
-        }
+            candleSeries.update(candle);
+            document.getElementById('status').innerText = "LIVE - " + candle.close;
 
-        init();
+            // LOGICA MASTER ROOT ISTANTANEA
+            const volUSD = parseFloat(k.v) * candle.close;
+            if (volUSD > 10000) {
+                prices.push(candle.close);
+                if (prices.length > 50) prices.shift();
+                const avgRoot = prices.reduce((a, b) => a + b, 0) / prices.length;
+                rootLine.update({ time: candle.time, value: avgRoot });
+                document.getElementById('rootVal').innerText = avgRoot.toFixed(2);
+            }
+        };
     </script>
 </body>
 </html>

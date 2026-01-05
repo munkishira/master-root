@@ -1,63 +1,119 @@
 <!DOCTYPE html>
-<html>
+<html lang="it">
 <head>
-    <title>MASTER ROOT - ULTRA TERMINAL</title>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <meta charset="UTF-8">
+    <title>MASTER ROOT - INDEPENDENT TERMINAL</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
-        body { margin: 0; background: #000; color: #0f0; font-family: 'Courier New', monospace; }
-        #controls { padding: 10px; border-bottom: 1px solid #333; display: flex; gap: 20px; }
-        #chart { width: 100vw; height: 85vh; }
-        .stat { color: #00ffcc; font-weight: bold; }
+        body { margin: 0; background-color: #050505; color: #00ffcc; font-family: 'Courier New', monospace; overflow: hidden; }
+        #header { height: 50px; border-bottom: 2px solid #1a1a1a; display: flex; align-items: center; padding: 0 20px; justify-content: space-between; }
+        #chart-container { height: calc(100vh - 120px); width: 100vw; }
+        #stats { height: 70px; background: #0a0a0a; border-top: 2px solid #1a1a1a; display: flex; align-items: center; justify-content: space-around; }
+        .stat-box { text-align: center; }
+        .val { display: block; font-size: 18px; font-weight: bold; color: white; }
+        .label { font-size: 10px; color: #00ffcc; text-transform: uppercase; }
+        .swap-alert { color: #ff3300; animation: pulse 1s infinite; }
+        @keyframes pulse { 50% { opacity: 0.5; } }
     </style>
 </head>
 <body>
-    <div id="controls">
-        <span>ASSET: <b class="stat">ETH/USDT</b></span>
-        <span>STATUS: <b id="status" class="stat">CONNECTING...</b></span>
-        <span>RADICE: <b id="rootVal" class="stat">--</b></span>
+
+<div id="header">
+    <strong>THE MASTER ROOT v3.0 — ETH LIVE</strong>
+    <div id="connection-status">SINCRO BLOCKCHAIN: <span style="color:white">ATTIVA</span></div>
+</div>
+
+<div id="chart-container"></div>
+
+<div id="stats">
+    <div class="stat-box">
+        <span class="label">Prezzo Live</span>
+        <span id="live-price" class="val">--</span>
     </div>
-    <div id="chart"></div>
+    <div class="stat-box">
+        <span class="label">Radice Attuale</span>
+        <span id="root-price" class="val">--</span>
+    </div>
+    <div class="stat-box">
+        <span class="label">Distanza</span>
+        <span id="dist-perc" class="val">--</span>
+    </div>
+    <div id="state-box" class="stat-box">
+        <span class="label">Stato Teoria</span>
+        <span id="theory-state" class="val">ANALISI...</span>
+    </div>
+</div>
 
-    <script>
-        const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-            layout: { background: { color: '#000' }, textColor: '#0f0' },
-            grid: { vertLines: { color: '#111' }, horzLines: { color: '#111' } },
-            timeScale: { timeVisible: true, secondsVisible: true }
-        });
+<script>
+    let chart = echarts.init(document.getElementById('chart-container'));
+    let prices = [];
+    let rootPoints = [];
+    let times = [];
+    
+    // Logica Radice
+    let sumPV = 0;
+    let sumV = 0;
 
-        const candleSeries = chart.addCandlestickSeries({ upColor: '#0f0', downColor: '#f00' });
-        const rootLine = chart.addLineSeries({ color: '#00ccff', lineWidth: 2 });
-        
-        // DATI REAL TIME VIA WEBSOCKET DIRETTO
-        const socket = new WebSocket('wss://stream.binance.com:443/ws/ethusdt@kline_1s');
+    const option = {
+        backgroundColor: '#050505',
+        tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+        xAxis: { type: 'category', data: times, splitLine: { show: false }, axisLine: { lineStyle: { color: '#333' } } },
+        yAxis: { scale: true, splitLine: { lineStyle: { color: '#111' } }, axisLine: { lineStyle: { color: '#333' } } },
+        series: [
+            { name: 'Prezzo', type: 'line', data: prices, itemStyle: { color: '#fff' }, symbol: 'none', lineWidth: 1 },
+            { name: 'Radice', type: 'line', data: rootPoints, itemStyle: { color: '#00ffcc' }, symbol: 'none', lineStyle: { width: 3, shadowBlur: 10, shadowColor: '#00ffcc' } }
+        ],
+        animation: false
+    };
 
-        let prices = [];
-        let volumes = [];
+    chart.setOption(option);
 
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            const k = data.k;
-            const candle = {
-                time: k.t / 1000,
-                open: parseFloat(k.o),
-                high: parseFloat(k.h),
-                low: parseFloat(k.l),
-                close: parseFloat(k.c)
-            };
+    // WebSocket Diretto Binance (Niente intermediari)
+    const ws = new WebSocket('wss://stream.binance.com:9443/ws/ethusdt@trade');
 
-            candleSeries.update(candle);
-            document.getElementById('status').innerText = "LIVE - " + candle.close;
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const p = parseFloat(data.p);
+        const v = parseFloat(data.q);
+        const t = new Date(data.T).toLocaleTimeString();
+        const usdVol = p * v;
 
-            // LOGICA MASTER ROOT ISTANTANEA
-            const volUSD = parseFloat(k.v) * candle.close;
-            if (volUSD > 10000) {
-                prices.push(candle.close);
-                if (prices.length > 50) prices.shift();
-                const avgRoot = prices.reduce((a, b) => a + b, 0) / prices.length;
-                rootLine.update({ time: candle.time, value: avgRoot });
-                document.getElementById('rootVal').innerText = avgRoot.toFixed(2);
+        // FILTRO BALENE 10K
+        if (usdVol >= 10000) {
+            sumPV += p * usdVol;
+            sumV += usdVol;
+            let currentRoot = sumPV / sumV;
+
+            prices.push(p);
+            rootPoints.push(currentRoot.toFixed(2));
+            times.push(t);
+
+            if (prices.length > 100) {
+                prices.shift();
+                rootPoints.shift();
+                times.shift();
             }
-        };
-    </script>
+
+            // Calcolo Distanza
+            let dist = ((p - currentRoot) / currentRoot * 100).toFixed(2);
+            
+            // Aggiorna UI
+            document.getElementById('live-price').innerText = "$" + p.toFixed(2);
+            document.getElementById('root-price').innerText = "$" + currentRoot.toFixed(2);
+            document.getElementById('dist-perc').innerText = dist + "%";
+            
+            let state = dist > 10 ? "SATURAZIONE" : (Math.abs(dist) < 1.5 ? "SWAP!" : "ACCUMULO");
+            document.getElementById('theory-state').innerText = state;
+            document.getElementById('theory-state').style.color = state === "SWAP!" ? "#ff3300" : "#00ffcc";
+
+            chart.setOption({
+                xAxis: { data: times },
+                series: [{ data: prices }, { data: rootPoints }]
+            });
+        }
+    };
+
+    window.onresize = () => chart.resize();
+</script>
 </body>
 </html>

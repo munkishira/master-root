@@ -1,25 +1,24 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>THE MASTER ROOT</title>
 
 <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 
-<!-- PWA -->
-<link rel="manifest" href="data:application/json,{
-  &quot;name&quot;:&quot;Master Root&quot;,
-  &quot;short_name&quot;:&quot;Root&quot;,
-  &quot;display&quot;:&quot;standalone&quot;,
-  &quot;background_color&quot;:&quot;#020617&quot;
-}">
-<meta name="theme-color" content="#020617">
-
 <style>
-body { background:#020617; color:#f8fafc; font-family:monospace }
-.panel { background:#0f172a; border:1px solid #1e293b; border-radius:1rem }
+body {
+  background:#020617;
+  color:#f8fafc;
+  font-family: monospace;
+}
+.panel {
+  background:#0f172a;
+  border:1px solid #1e293b;
+  border-radius:1rem;
+}
 </style>
 </head>
 
@@ -27,22 +26,40 @@ body { background:#020617; color:#f8fafc; font-family:monospace }
 
 <div class="max-w-6xl mx-auto space-y-3">
 
-<div class="panel p-4 flex justify-between items-center">
-  <h1 class="font-bold italic">THE MASTER ROOT</h1>
-  <select id="asset" class="bg-slate-900 p-2 rounded text-xs">
-    <option value="ETHUSDT">ETH/USDT</option>
-    <option value="BTCUSDT">BTC/USDT</option>
-  </select>
-</div>
+  <!-- HEADER -->
+  <div class="panel p-4 flex justify-between items-center">
+    <h1 class="font-bold italic">THE MASTER ROOT</h1>
+    <select id="asset" class="bg-slate-900 p-2 rounded text-xs">
+      <option value="ETHUSDT">ETH / USDT</option>
+      <option value="BTCUSDT">BTC / USDT</option>
+    </select>
+  </div>
 
-<div id="chart" style="height:55vh"></div>
+  <!-- CHART -->
+  <div class="panel p-2">
+    <div id="chart" style="width:100%; height:55vh;"></div>
+  </div>
 
-<div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-  <div class="panel p-3 text-center"><p class="text-xs">STATO</p><p id="state" class="font-bold text-yellow-400">---</p></div>
-  <div class="panel p-3 text-center"><p class="text-xs">WINRATE</p><p id="winrate">--%</p></div>
-  <div class="panel p-3 text-center"><p class="text-xs">PNL</p><p id="pnl">--%</p></div>
-  <div class="panel p-3 text-center"><button onclick="exportSignals()" class="bg-cyan-400 text-black px-3 py-1 rounded text-xs">EXPORT JSON</button></div>
-</div>
+  <!-- INFO -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+    <div class="panel p-3 text-center">
+      <p class="text-xs text-slate-400">STATO</p>
+      <p id="state" class="font-bold text-yellow-400">---</p>
+    </div>
+    <div class="panel p-3 text-center">
+      <p class="text-xs text-slate-400">WINRATE</p>
+      <p id="winrate">--%</p>
+    </div>
+    <div class="panel p-3 text-center">
+      <p class="text-xs text-slate-400">PNL</p>
+      <p id="pnl">--%</p>
+    </div>
+    <div class="panel p-3 text-center">
+      <button onclick="exportSignals()" class="bg-cyan-400 text-black px-3 py-1 rounded text-xs">
+        EXPORT JSON
+      </button>
+    </div>
+  </div>
 
 </div>
 
@@ -50,32 +67,67 @@ body { background:#020617; color:#f8fafc; font-family:monospace }
 class MasterRoot {
   constructor() {
     this.symbol = 'ETHUSDT'
-    this.tf = '1h'
+    this.interval = '1h'
     this.data = []
     this.signals = []
 
-    this.chart = LightweightCharts.createChart(document.getElementById('chart'), {
-      layout:{backgroundColor:'#020617', textColor:'#94a3b8'},
-      grid:{vertLines:{color:'#0f172a'},horzLines:{color:'#0f172a'}}
+    const container = document.getElementById('chart')
+
+    this.chart = LightweightCharts.createChart(container, {
+      width: container.clientWidth,
+      height: container.clientHeight,
+      layout: {
+        backgroundColor: '#020617',
+        textColor: '#94a3b8'
+      },
+      grid: {
+        vertLines: { color: '#0f172a' },
+        horzLines: { color: '#0f172a' }
+      },
+      timeScale: { timeVisible: true }
     })
 
     this.candles = this.chart.addCandlestickSeries({
-      upColor:'#22d3ee', downColor:'#f43f5e', borderVisible:false
+      upColor:'#22d3ee',
+      downColor:'#f43f5e',
+      borderVisible:false
     })
 
-    this.root = this.chart.addLineSeries({color:'#22d3ee', lineWidth:2})
-    this.liq = this.chart.addLineSeries({color:'#f97316', lineStyle:2})
+    this.rootLine = this.chart.addLineSeries({
+      color:'#22d3ee',
+      lineWidth:2
+    })
+
+    this.liqLine = this.chart.addLineSeries({
+      color:'#f97316',
+      lineStyle:2
+    })
+
+    window.addEventListener('resize', () => {
+      this.chart.applyOptions({
+        width: container.clientWidth,
+        height: container.clientHeight
+      })
+    })
 
     this.load()
   }
 
   async load() {
-    const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${this.symbol}&interval=${this.tf}&limit=300`)
+    this.data = []
+    this.signals = []
+
+    const r = await fetch(
+      `https://api.binance.com/api/v3/klines?symbol=${this.symbol}&interval=${this.interval}&limit=300`
+    )
     const d = await r.json()
 
-    this.data = d.map(c=>({
-      time:c[0]/1000,
-      open:+c[1], high:+c[2], low:+c[3], close:+c[4]
+    this.data = d.map(c => ({
+      time: c[0] / 1000,
+      open: +c[1],
+      high: +c[2],
+      low: +c[3],
+      close: +c[4]
     }))
 
     this.candles.setData(this.data)
@@ -87,62 +139,70 @@ class MasterRoot {
     let root = []
     let liq = []
 
-    for (let i=0;i<this.data.length;i++){
-      const slice = this.data.slice(Math.max(0,i-30),i+1)
-      const avg = slice.reduce((a,b)=>a+b.close,0)/slice.length
-      const dev = Math.sqrt(slice.reduce((a,b)=>a+Math.pow(b.close-avg,2),0)/slice.length)
+    for (let i = 0; i < this.data.length; i++) {
+      const slice = this.data.slice(Math.max(0, i - 30), i + 1)
+      const avg = slice.reduce((a, b) => a + b.close, 0) / slice.length
+      const dev = Math.sqrt(
+        slice.reduce((a, b) => a + Math.pow(b.close - avg, 2), 0) / slice.length
+      )
 
-      root.push({time:this.data[i].time,value:avg})
-      liq.push({time:this.data[i].time,value:avg - dev*1.5})
+      root.push({ time: this.data[i].time, value: avg })
+      liq.push({ time: this.data[i].time, value: avg - dev * 1.5 })
 
-      // segnali
-      if (i>30){
-        if (this.data[i-1].close < avg && this.data[i].close > avg)
-          this.signals.push({time:this.data[i].time,type:'BUY',price:this.data[i].close})
-        if (this.data[i-1].close > avg && this.data[i].close < avg)
-          this.signals.push({time:this.data[i].time,type:'SELL',price:this.data[i].close})
+      if (i > 31) {
+        if (this.data[i - 1].close < avg && this.data[i].close > avg)
+          this.signals.push({ time: this.data[i].time, type: 'BUY', price: this.data[i].close })
+
+        if (this.data[i - 1].close > avg && this.data[i].close < avg)
+          this.signals.push({ time: this.data[i].time, type: 'SELL', price: this.data[i].close })
       }
     }
 
-    this.root.setData(root)
-    this.liq.setData(liq)
+    this.rootLine.setData(root)
+    this.liqLine.setData(liq)
 
     document.getElementById('state').innerText =
-      this.data.at(-1).close > root.at(-1).value ? "TREND UP" : "ACCUMULO"
+      this.data.at(-1).close > root.at(-1).value ? 'TREND UP' : 'ACCUMULO'
   }
 
   backtest() {
-    let wins=0,loss=0,pnl=0
-    let entry=null
+    let entry = null
+    let wins = 0
+    let loss = 0
+    let pnl = 0
 
-    this.signals.forEach(s=>{
-      if (s.type==='BUY') entry=s.price
-      if (s.type==='SELL' && entry){
-        const r=(s.price-entry)/entry*100
-        pnl+=r
-        r>0?wins++:loss++
-        entry=null
+    this.signals.forEach(s => {
+      if (s.type === 'BUY') entry = s.price
+      if (s.type === 'SELL' && entry) {
+        const r = (s.price - entry) / entry * 100
+        pnl += r
+        r > 0 ? wins++ : loss++
+        entry = null
       }
     })
 
-    const total=wins+loss
-    document.getElementById('winrate').innerText = total?((wins/total)*100).toFixed(1)+'%':'--'
-    document.getElementById('pnl').innerText = pnl.toFixed(2)+'%'
+    const total = wins + loss
+    document.getElementById('winrate').innerText =
+      total ? ((wins / total) * 100).toFixed(1) + '%' : '--'
+    document.getElementById('pnl').innerText = pnl.toFixed(2) + '%'
   }
 }
 
 const APP = new MasterRoot()
 
-document.getElementById('asset').onchange=e=>{
-  APP.symbol=e.target.value
+document.getElementById('asset').addEventListener('change', e => {
+  APP.symbol = e.target.value
   APP.load()
-}
+})
 
-function exportSignals(){
-  const blob = new Blob([JSON.stringify(APP.signals,null,2)],{type:'application/json'})
-  const a=document.createElement('a')
-  a.href=URL.createObjectURL(blob)
-  a.download='master-root-signals.json'
+function exportSignals() {
+  const blob = new Blob(
+    [JSON.stringify(APP.signals, null, 2)],
+    { type: 'application/json' }
+  )
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = 'master-root-signals.json'
   a.click()
 }
 </script>

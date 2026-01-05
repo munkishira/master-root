@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THE MASTER ROOT - Terminale Strategico</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #050505; color: #00ffcc; font-family: 'Courier New', monospace; }
+        #chart { width: 100%; height: 60vh; border-bottom: 2px solid #333; }
+        .panel { background: #0a0a0a; border: 1px solid #00ffcc; box-shadow: 0 0 15px rgba(0, 255, 204, 0.2); }
+    </style>
+</head>
+<body class="p-2">
+
+    <div class="max-w-6xl mx-auto">
+        <div class="panel p-4 mb-2 flex justify-between items-center rounded-lg">
+            <div>
+                <h1 class="text-xl font-bold tracking-tighter text-white">THE MASTER ROOT <span class="text-xs text-cyan-400">v2.0</span></h1>
+                <p class="text-[10px] uppercase text-gray-500 italic">Basato sulla Teoria delle Radici di Marco</p>
+            </div>
+            <div id="status" class="text-right">
+                <div class="text-[10px] text-gray-400">STATO SWAP:</div>
+                <div id="statusLabel" class="font-bold text-yellow-400 animate-pulse text-sm">ANALISI...</div>
+            </div>
+        </div>
+
+        <div id="chart" class="rounded-xl overflow-hidden mb-4 panel"></div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+            <div class="panel p-3 rounded-lg text-center">
+                <p class="text-[10px] text-gray-500 uppercase">Distanza Radici</p>
+                <p id="distText" class="text-lg font-bold">--%</p>
+            </div>
+            <div class="panel p-3 rounded-lg text-center border-cyan-500">
+                <p class="text-[10px] text-gray-500 uppercase">Profitto Balene</p>
+                <p id="profText" class="text-lg font-bold text-cyan-400">--%</p>
+            </div>
+            <div class="panel p-3 rounded-lg text-center border-orange-500">
+                <p class="text-[10px] text-gray-500 uppercase">Prezzo Radice</p>
+                <p id="rootPrice" class="text-lg font-bold text-orange-400">--</p>
+            </div>
+            <div class="panel p-3 rounded-lg text-center">
+                <p class="text-[10px] text-gray-500 uppercase">Target Uscita</p>
+                <p id="exitTarget" class="text-lg font-bold text-white">--</p>
+            </div>
+        </div>
+
+        <button onclick="window.location.reload()" class="w-full panel p-3 rounded-lg font-bold hover:bg-cyan-900 transition uppercase tracking-widest text-xs">Aggiorna Analisi Radici</button>
+    </div>
+
+    <script>
+        // 1. Inizializzazione Grafico
+        const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+            layout: { backgroundColor: '#050505', textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#111' }, horzLines: { color: '#111' } },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+            priceScale: { borderColor: '#333' },
+            timeScale: { borderColor: '#333' },
+        });
+
+        const candleSeries = chart.addCandlestickSeries({ upColor: '#00ffcc', downColor: '#ff4444', borderVisible: false, wickUpColor: '#00ffcc', wickDownColor: '#ff4444' });
+        const currentRootLine = chart.addLineSeries({ color: '#00ffff', lineWidth: 3, title: 'Radice Attuale' });
+        const pastRootLine = chart.addLineSeries({ color: '#ff6600', lineWidth: 2, lineStyle: 2, title: 'Liquidità Passata' });
+
+        // 2. Generazione Dati (Simulati per la struttura, collegabili a API Binance/Dex)
+        let data = [];
+        let now = Math.floor(Date.now() / 1000);
+        let basePrice = 50000;
+
+        for (let i = 0; i < 100; i++) {
+            let open = basePrice + Math.random() * 1000 - 500;
+            let close = open + Math.random() * 1000 - 500;
+            data.push({ time: now - (100 - i) * 3600, open, high: Math.max(open, close) + 200, low: Math.min(open, close) - 200, close });
+            basePrice = close;
+        }
+        candleSeries.setData(data);
+
+        // 3. Applicazione Logica delle Radici di Marco
+        const rootData = data.map(d => ({ time: d.time, value: d.close * 0.98 })); // Esempio logica 10k+
+        const liquidityData = data.map(d => ({ time: d.time, value: d.close * 0.95 }));
+        
+        currentRootLine.setData(rootData);
+        pastRootLine.setData(liquidityData);
+
+        // 4. Aggiornamento Dashboard
+        function updateDashboard() {
+            let lastClose = data[99].close;
+            let lastRoot = rootData[99].value;
+            let lastLiq = liquidityData[99].value;
+            
+            let dist = (((lastRoot - lastLiq) / lastLiq) * 100).toFixed(2);
+            let prof = (((lastClose - lastRoot) / lastRoot) * 100).toFixed(2);
+
+            document.getElementById('distText').innerText = dist + "%";
+            document.getElementById('profText').innerText = prof + "%";
+            document.getElementById('rootPrice').innerText = "$" + lastRoot.toFixed(2);
+            document.getElementById('exitTarget').innerText = "$" + (lastRoot * 1.25).toFixed(2);
+            
+            if(Math.abs(dist) < 2) {
+                document.getElementById('statusLabel').innerText = "SWAP IMMINENTE";
+                document.getElementById('statusLabel').className = "font-bold text-white bg-red-600 px-2 rounded animate-bounce";
+            } else {
+                document.getElementById('statusLabel').innerText = "IN ACCUMULO";
+            }
+        }
+        updateDashboard();
+    </script>
+</body>
+</html>

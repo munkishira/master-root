@@ -1,214 +1,187 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
-<meta charset="UTF-8">
-<title>The Master Root</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-
-<style>
-body {
-  margin: 0;
-  background: #020617;
-  color: #e5e7eb;
-  font-family: monospace;
-}
-header {
-  padding: 10px 14px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid #1e293b;
-}
-select {
-  background: #020617;
-  color: #e5e7eb;
-  border: 1px solid #334155;
-  padding: 6px;
-}
-#chart {
-  width: 100vw;
-  height: calc(100vh - 48px);
-}
-#state {
-  position: fixed;
-  bottom: 10px;
-  left: 10px;
-  background: #020617;
-  border: 1px solid #334155;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-}
-</style>
+    <meta charset="UTF-8">
+    <title>THE MASTER ROOT — Live Terminal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body { margin: 0; background: #020617; color: #e5e7eb; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+        header { padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e293b; background: #0f172a; }
+        select { background: #1e293b; color: #e5e7eb; border: 1px solid #334155; padding: 6px; border-radius: 4px; outline: none; }
+        #chart { width: 100vw; height: calc(100vh - 100px); }
+        .dashboard { position: fixed; bottom: 0; width: 100%; background: #0f172a; border-top: 1px solid #334155; display: grid; grid-template-cols: repeat(3, 1fr); padding: 10px; font-size: 11px; z-index: 10; }
+        .stat-box { display: flex; flex-direction: column; align-items: center; border-right: 1px solid #1e293b; }
+        .stat-val { font-size: 14px; font-weight: bold; margin-top: 3px; }
+        .whale-alert { color: #22d3ee; text-shadow: 0 0 5px #22d3ee; }
+        #state { color: #facc15; }
+    </style>
 </head>
-
 <body>
 
 <header>
-  <strong>THE MASTER ROOT — 1M</strong>
-  <select id="asset">
-    <option value="ETHUSDT">ETH / USDT</option>
-    <option value="BTCUSDT">BTC / USDT</option>
-  </select>
+    <div><strong>THE MASTER ROOT</strong> <span style="font-size: 10px; color: #94a3b8; margin-left: 10px;">PROTOTIPO ALPHA</span></div>
+    <select id="asset">
+        <option value="ETHUSDT">ETH / USDT</option>
+        <option value="BTCUSDT">BTC / USDT</option>
+    </select>
 </header>
 
 <div id="chart"></div>
-<div id="state">LOADING…</div>
+
+<div class="dashboard">
+    <div class="stat-box">
+        <span>STATO RADICE</span>
+        <div id="state" class="stat-val italic">CONNETTENDO...</div>
+    </div>
+    <div class="stat-box">
+        <span>DISTANZA / PROFITTO</span>
+        <div id="dist" class="stat-val">--%</div>
+    </div>
+    <div class="stat-box" style="border:none;">
+        <span>WHALE HITS (ULTIMO MIN)</span>
+        <div id="whaleHits" class="stat-val whale-alert">0</div>
+    </div>
+</div>
 
 <script>
-const chart = LightweightCharts.createChart(
-  document.getElementById('chart'),
-  {
-    layout: { background: { color: '#020617' }, textColor: '#94a3b8' },
-    grid: {
-      vertLines: { color: '#0f172a' },
-      horzLines: { color: '#0f172a' }
-    },
-    timeScale: { timeVisible: true, secondsVisible: true }
-  }
-);
-
-const candles = chart.addCandlestickSeries({
-  upColor: '#22d3ee',
-  downColor: '#f43f5e',
-  wickUpColor: '#22d3ee',
-  wickDownColor: '#f43f5e',
-  borderVisible: false
-});
-
-const rootLine = chart.addLineSeries({
-  color: '#22d3ee',
-  lineWidth: 2
-});
-
-const liqLine = chart.addLineSeries({
-  color: '#f97316',
-  lineWidth: 2,
-  lineStyle: 2
-});
-
-const signalSeries = chart.addLineSeries({
-  color: '#22c55e',
-  lineWidth: 0
-});
-
 let SYMBOL = 'ETHUSDT';
 let DATA = [];
+let socket = null;
+let currentWhaleHits = 0;
+
+const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+    layout: { background: { color: '#020617' }, textColor: '#94a3b8' },
+    grid: { vertLines: { color: '#0f172a' }, horzLines: { color: '#0f172a' } },
+    timeScale: { timeVisible: true, secondsVisible: false }
+});
+
+const candles = chart.addCandlestickSeries({
+    upColor: '#22d3ee', downColor: '#f43f5e', borderVisible: false,
+    wickUpColor: '#22d3ee', wickDownColor: '#f43f5e'
+});
+
+const rootLine = chart.addLineSeries({ color: '#22d3ee', lineWidth: 2, title: 'Radice Attiva' });
+const liqLine = chart.addLineSeries({ color: '#f97316', lineWidth: 2, lineStyle: 2, title: 'Radice Passata' });
 
 window.addEventListener('resize', () => {
-  chart.applyOptions({
-    width: document.getElementById('chart').clientWidth,
-    height: document.getElementById('chart').clientHeight
-  });
+    chart.applyOptions({ width: window.innerWidth, height: window.innerHeight - 100 });
 });
 
 async function load(symbol) {
-  document.getElementById('state').innerText = 'LOADING…';
+    if (socket) socket.close();
+    document.getElementById('state').innerText = 'LOADING...';
+    
+    try {
+        const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=500`);
+        const d = await r.json();
 
-  const r = await fetch(
-    `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=500`
-  );
-  const d = await r.json();
+        DATA = d.map(c => ({
+            time: c[0] / 1000,
+            open: +c[1], high: +c[2], low: +c[3], close: +c[4], volume: +c[5]
+        }));
 
-  DATA = d.map(c => ({
-    time: c[0] / 1000,
-    open: +c[1],
-    high: +c[2],
-    low: +c[3],
-    close: +c[4],
-    volume: +c[5]
-  }));
+        candles.setData(DATA);
+        calculateMasterRoot();
+        connectLive(symbol);
+    } catch (e) {
+        document.getElementById('state').innerText = 'ERRORE API';
+    }
+}
 
-  candles.setData(DATA);
-  calculateMasterRoot();
+function connectLive(symbol) {
+    socket = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_1m`);
+    
+    socket.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        const k = msg.k;
+        
+        const liveCandle = {
+            time: k.t / 1000,
+            open: +k.o, high: +k.h, low: +k.l, close: +k.c, volume: +k.v
+        };
+
+        const usdVolume = liveCandle.close * liveCandle.volume;
+        if (usdVolume >= 10000 && k.x === false) { // Se è un trade grosso nel minuto corrente
+            currentWhaleHits++;
+            document.getElementById('whaleHits').innerText = currentWhaleHits;
+        }
+
+        if (k.x) currentWhaleHits = 0; // Reset contatore alla chiusura candela
+
+        if (DATA.length > 0 && DATA[DATA.length - 1].time === liveCandle.time) {
+            DATA[DATA.length - 1] = liveCandle;
+        } else {
+            DATA.push(liveCandle);
+        }
+
+        candles.update(liveCandle);
+        calculateMasterRoot();
+    };
 }
 
 function calculateMasterRoot() {
-  let root = [];
-  let liq = [];
-  let markers = [];
+    let root = [];
+    let liq = [];
+    let markers = [];
+    let sumPV = 0, sumV = 0;
+    let currentRoot = null, liquidityRoot = null;
+    let prevRoot = null, prevLiq = null;
 
-  let sumPV = 0;
-  let sumV = 0;
+    for (let i = 0; i < DATA.length; i++) {
+        const c = DATA[i];
+        const usdVolume = c.close * c.volume;
 
-  let currentRoot = null;
-  let liquidityRoot = null;
-  let prevRoot = null;
-  let prevLiq = null;
-
-  for (let i = 0; i < DATA.length; i++) {
-    const c = DATA[i];
-    const usdVolume = c.close * c.volume;
-
-    // FILTRO BALENE
-    if (usdVolume >= 10000) {
-      sumPV += c.close * usdVolume;
-      sumV += usdVolume;
-      currentRoot = sumPV / sumV;
-    }
-
-    if (!liquidityRoot && currentRoot) liquidityRoot = currentRoot;
-
-    // RADICE PASSATA (vendita balene)
-    if (usdVolume >= 10000 && currentRoot && c.close < currentRoot) {
-      liquidityRoot = liquidityRoot * 0.9 + c.close * 0.1;
-    }
-
-    if (currentRoot) {
-      root.push({ time: c.time, value: currentRoot });
-      liq.push({ time: c.time, value: liquidityRoot });
-
-      // ROOT SWAP
-      if (prevRoot && prevLiq) {
-        if (prevRoot < prevLiq && currentRoot > liquidityRoot) {
-          markers.push({
-            time: c.time,
-            position: 'belowBar',
-            color: '#22c55e',
-            shape: 'arrowUp',
-            text: 'ROOT SWAP ↑'
-          });
+        if (usdVolume >= 10000) {
+            sumPV += c.close * usdVolume;
+            sumV += usdVolume;
+            currentRoot = sumPV / sumV;
         }
-        if (prevRoot > prevLiq && currentRoot < liquidityRoot) {
-          markers.push({
-            time: c.time,
-            position: 'aboveBar',
-            color: '#ef4444',
-            shape: 'arrowDown',
-            text: 'ROOT SWAP ↓'
-          });
+
+        if (!liquidityRoot && currentRoot) liquidityRoot = currentRoot;
+        if (usdVolume >= 10000 && currentRoot && c.close < currentRoot) {
+            liquidityRoot = liquidityRoot * 0.95 + c.close * 0.05;
         }
-      }
 
-      prevRoot = currentRoot;
-      prevLiq = liquidityRoot;
+        if (currentRoot) {
+            root.push({ time: c.time, value: currentRoot });
+            liq.push({ time: c.time, value: liquidityRoot });
+
+            if (prevRoot && prevLiq) {
+                if (prevRoot < prevLiq && currentRoot > liquidityRoot) {
+                    markers.push({ time: c.time, position: 'belowBar', color: '#22c55e', shape: 'arrowUp', text: 'SWAP ↑' });
+                }
+                if (prevRoot > prevLiq && currentRoot < liquidityRoot) {
+                    markers.push({ time: c.time, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: 'SWAP ↓' });
+                }
+            }
+            prevRoot = currentRoot;
+            prevLiq = liquidityRoot;
+        }
     }
-  }
 
-  rootLine.setData(root);
-  liqLine.setData(liq);
-  candles.setMarkers(markers);
+    rootLine.setData(root);
+    liqLine.setData(liq);
+    candles.setMarkers(markers);
 
-  const last = DATA.at(-1).close;
-  const dist = ((last - currentRoot) / currentRoot) * 100;
+    const last = DATA[DATA.length - 1].close;
+    const dist = ((last - currentRoot) / currentRoot) * 100;
 
-  let state = 'NEUTRO';
-  if (Math.abs(dist) < 2) state = 'ACCUMULO / SWAP';
-  if (dist > 15) state = 'SATURAZIONE (BALENE IN IPER-PROFITTO)';
+    let state = 'NEUTRO';
+    if (Math.abs(dist) < 1.5) state = 'ACCUMULO / SWAP';
+    else if (dist > 10) state = 'SATURAZIONE';
+    else if (dist < -5) state = 'SOTTO-RADICE';
 
-  document.getElementById('state').innerText =
-    `STATE: ${state} | DISTANZA: ${dist.toFixed(2)}%`;
+    document.getElementById('state').innerText = state;
+    document.getElementById('dist').innerText = dist.toFixed(2) + "%";
 }
 
 document.getElementById('asset').addEventListener('change', e => {
-  SYMBOL = e.target.value;
-  load(SYMBOL);
+    SYMBOL = e.target.value;
+    load(SYMBOL);
 });
 
 load(SYMBOL);
 </script>
-
 </body>
 </html>
